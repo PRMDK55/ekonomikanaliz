@@ -4,178 +4,148 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 
-# --- 1. SAYFA AYARLARI ---
+# --- 1. AYARLAR ---
 st.set_page_config(
-    page_title="Finans Ana v3.0", 
+    page_title="Finans Ana", 
     layout="wide", 
-    page_icon="💰",
+    page_icon="📉",
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. GÖRÜNÜMÜ TEMİZLEME (CSS) ---
+# --- 2. GÖRÜNÜMÜ TAMAMEN TEMİZLEME (CSS) ---
 st.markdown("""
     <style>
-        /* Ana Menü ve Footer Gizleme */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        header {visibility: hidden;}
+        /* 1. Üstteki Tüm Menüleri (Fork, GitHub, Toolbar) Yok Et */
+        header, .stAppHeader, [data-testid="stHeader"] {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0px !important;
+            opacity: 0 !important;
+        }
         
-        /* Gelişmiş Gizleme (Toolbar vb.) */
-        [data-testid="stToolbar"] {display: none !important;}
-        [data-testid="stHeader"] {display: none !important;}
+        /* 2. Sağ Üst Menü (Üç Nokta) */
+        [data-testid="stToolbar"] {
+            display: none !important;
+        }
         
-        /* Sayfa Kenar Boşluklarını Sıfırla */
+        /* 3. Alttaki 'Manage App' ve Footer (Bunu zorlar ama Streamlit bazen engeller) */
+        footer, .stFooter {
+            display: none !important;
+        }
+        div[class^="viewerBadge"] {
+            display: none !important;
+        }
+        
+        /* 4. Sayfa Boşluklarını Ayarla */
         .block-container {
             padding-top: 1rem !important;
             padding-bottom: 0rem !important;
         }
         
-        /* Mobilde Kart Görünümü */
-        .metric-card {
+        /* 5. Metrik Kutuları Tasarımı */
+        div[data-testid="metric-container"] {
             background-color: #ffffff;
             border: 1px solid #e0e0e0;
-            border-radius: 10px;
-            padding: 15px;
-            text-align: center;
+            border-radius: 8px;
+            padding: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            text-align: center;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. BAŞLIK VE VERSİYON KONTROLÜ ---
-# Eğer bu yazıyı görmüyorsanız kod güncellenmemiştir!
-st.markdown("<h3 style='text-align: center;'>FİNANS ANA V3.0</h3>", unsafe_allow_html=True)
-
-# --- 4. VERİ LİSTESİ ---
-# Tüm varlıkları tek bir havuzda topladım ki araması kolay olsun
-TUM_VARLIKLAR = {
-    # ALTIN VE DÖVİZ (Özel Kodlar)
+# --- 3. VERİ LİSTESİ (SADECE SEÇİLEBİLİR OLANLAR) ---
+VARLIKLAR = {
+    "Seçiniz...": None, # Başlangıçta boş gelsin
     "Gram Altın": "GRAM_ALTIN",
-    "Çeyrek Altın": "CEYREK_ALTIN",
-    "Yarım Altın": "YARIM_ALTIN",
-    "Ons Altın": "GC=F",
-    "Gümüş": "GUMUS_TL",
     "Dolar/TL": "TRY=X",
     "Euro/TL": "EURTRY=X",
-    "Sterlin/TL": "GBPTRY=X",
-    
-    # KRİPTO
+    "BIST 100": "XU100.IS",
+    "Türk Hava Yolları": "THYAO.IS",
+    "Aselsan": "ASELS.IS",
+    "Garanti BBVA": "GARAN.IS",
+    "Ereğli Demir Çelik": "EREGL.IS",
+    "Şişecam": "SISE.IS",
     "Bitcoin (BTC)": "BTC-USD",
-    "Ethereum (ETH)": "ETH-USD",
-    "Solana (SOL)": "SOL-USD",
-    "Avax": "AVAX-USD",
-    "Dogecoin": "DOGE-USD",
-    
-    # BORSA İSTANBUL (Popülerler)
-    "THY (THYAO)": "THYAO.IS",
-    "Aselsan (ASELS)": "ASELS.IS",
-    "Garanti (GARAN)": "GARAN.IS",
-    "Ereğli (EREGL)": "EREGL.IS",
-    "Şişecam (SISE)": "SISE.IS",
-    "BİM (BIMAS)": "BIMAS.IS",
-    "Akbank (AKBNK)": "AKBNK.IS",
-    "Koç Holding (KCHOL)": "KCHOL.IS",
-    "Sasa (SASA)": "SASA.IS",
-    "Hektaş (HEKTS)": "HEKTS.IS",
-    "Tüpraş (TUPRS)": "TUPRS.IS",
-    "Ford Otosan (FROTO)": "FROTO.IS",
-    "Astor Enerji": "ASTOR.IS",
-    "Kontrolmatik": "KONTR.IS",
-    "Mia Teknoloji": "MIATK.IS"
+    "Ethereum (ETH)": "ETH-USD"
 }
 
-# --- 5. GELİŞMİŞ ARAMA KUTUSU ---
-st.write("---")
-# Kullanıcıya hem seçim kutusu sunuyoruz hem de içine yazabiliyor
+# --- 4. ARAYÜZ (ARAMA YOK, SADECE LİSTE) ---
+st.markdown("<h3 style='text-align: center;'>Piyasa Takip</h3>", unsafe_allow_html=True)
+
+# Sadece açılır kutu (Dropdown)
 secilen_isim = st.selectbox(
-    "🔍 Ne aramak istiyorsun? (Örn: Altın, Dolar, THY)",
-    options=list(TUM_VARLIKLAR.keys()),
-    index=0,
-    placeholder="Yazmaya başla..."
+    "",
+    options=list(VARLIKLAR.keys()),
+    index=0, # İlk seçenek (Seçiniz) seçili gelsin
+    label_visibility="collapsed" # Başlığı gizle
 )
 
-# --- 6. VERİ ÇEKME FONKSİYONU ---
-@st.cache_data(ttl=600) # 10 dakika önbellek
-def veri_getir_ve_islet(isim, sembol):
+# --- 5. VERİ ÇEKME VE GÖSTERME ---
+@st.cache_data(ttl=300)
+def veri_getir(sembol_kodu):
     try:
+        if not sembol_kodu: return None
         periyot = "1y"
         
-        # ÖZEL HESAPLAMA (ALTIN/GÜMÜŞ)
-        if sembol in ["GRAM_ALTIN", "CEYREK_ALTIN", "YARIM_ALTIN", "GUMUS_TL"]:
-            ons_kodu = "GC=F" if "ALTIN" in sembol else "SI=F"
-            ons = yf.download(ons_kodu, period=periyot, progress=False)
+        # ALTIN ÖZEL HESAPLAMA
+        if sembol_kodu == "GRAM_ALTIN":
+            ons = yf.download("GC=F", period=periyot, progress=False)
             usd = yf.download("TRY=X", period=periyot, progress=False)
             
-            # Veri Düzeltme
+            # Sütun temizliği
             if isinstance(ons.columns, pd.MultiIndex): ons.columns = ons.columns.get_level_values(0)
             if isinstance(usd.columns, pd.MultiIndex): usd.columns = usd.columns.get_level_values(0)
             
-            # Birleştir
             df = pd.merge(ons['Close'], usd['Close'], left_index=True, right_index=True, suffixes=('_Ons', '_Usd'))
-            df.dropna(inplace=True)
-            
             gram_tl = (df['Close_Ons'] * df['Close_Usd']) / 31.1035
             
-            if sembol == "GRAM_ALTIN": serisi = gram_tl
-            elif sembol == "CEYREK_ALTIN": serisi = gram_tl * 1.63
-            elif sembol == "YARIM_ALTIN": serisi = gram_tl * 3.26
-            elif sembol == "GUMUS_TL": serisi = gram_tl
-            
-            df_final = pd.DataFrame({'Date': df.index, 'Close': serisi})
+            df_final = pd.DataFrame({'Date': df.index, 'Close': gram_tl})
             
         else:
-            # NORMAL HİSSE/KRİPTO
-            df = yf.download(sembol, period=periyot, progress=False)
+            # NORMAL HİSSE
+            df = yf.download(sembol_kodu, period=periyot, progress=False)
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-            
             df.reset_index(inplace=True)
-            # Tarih sütunu adını garantile
+            
+            # Tarih sütununu bul
             if 'Date' not in df.columns:
-                if 'Datetime' in df.columns: df.rename(columns={'Datetime': 'Date'}, inplace=True)
-                else: df.rename(columns={df.columns[0]: 'Date'}, inplace=True)
+                col = next((c for c in df.columns if 'date' in c.lower()), None)
+                if col: df.rename(columns={col: 'Date'}, inplace=True)
             
             df_final = df[['Date', 'Close']]
 
         return df_final
-    except Exception as e:
+    except:
         return None
 
-# --- 7. EKRANA BASMA ---
-if secilen_isim:
-    sembol = TUM_VARLIKLAR[secilen_isim]
+# --- EKRAN MANTIĞI ---
+if secilen_isim and VARLIKLAR[secilen_isim]:
+    kod = VARLIKLAR[secilen_isim]
     
-    # Yükleniyor animasyonu
-    with st.spinner(f"{secilen_isim} verileri çekiliyor..."):
-        df = veri_getir_ve_islet(secilen_isim, sembol)
+    with st.spinner(f"{secilen_isim} verisi yükleniyor..."):
+        df = veri_getir(kod)
     
     if df is not None and not df.empty:
-        # Son veriler
+        # Hesaplamalar
         son_fiyat = float(df['Close'].iloc[-1])
         onceki_fiyat = float(df['Close'].iloc[-2])
         degisim = ((son_fiyat - onceki_fiyat) / onceki_fiyat) * 100
+        renk = "green" if degisim > 0 else "red"
         
-        # KART TASARIMI (HTML ile)
-        renk = "#2ecc71" if degisim > 0 else "#e74c3c" # Yeşil veya Kırmızı
-        ok = "⬆" if degisim > 0 else "⬇"
+        # Metrik Gösterimi
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            st.metric(label=secilen_isim, value=f"{son_fiyat:,.2f} ₺", delta=f"%{degisim:.2f}")
         
-        st.markdown(f"""
-        <div class="metric-card">
-            <h2 style="margin:0; color: #555;">{secilen_isim}</h2>
-            <h1 style="margin:0; font-size: 40px;">{son_fiyat:,.2f} <span style="font-size: 20px;">TL</span></h1>
-            <h3 style="margin:0; color: {renk};">{ok} %{degisim:.2f}</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # GRAFİK
-        st.write("")
+        # Grafik
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df['Date'], y=df['Close'],
             mode='lines',
-            fill='tozeroy', # Altını doldur
-            line=dict(color='#3498db', width=2)
+            fill='tozeroy',
+            line=dict(color='#0078FF', width=2)
         ))
-        
         fig.update_layout(
             margin=dict(l=0, r=0, t=20, b=0),
             height=300,
@@ -187,4 +157,7 @@ if secilen_isim:
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
     else:
-        st.error(f"⚠️ {secilen_isim} için şu an veri alınamıyor. Piyasalar kapalı olabilir veya bağlantı sorunu var.")
+        st.error("Veri alınamadı. Bağlantı sorunu olabilir.")
+else:
+    # Henüz seçim yapılmadıysa boş ekran veya bilgi mesajı
+    st.info("👆 Lütfen yukarıdaki listeden bir varlık seçin.")
