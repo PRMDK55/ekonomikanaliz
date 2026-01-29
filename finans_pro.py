@@ -5,38 +5,42 @@ import plotly.graph_objects as go
 
 # --- 1. AYARLAR ---
 st.set_page_config(
-    page_title="Piyasa Özeti", 
+    page_title="Piyasa Durumu", 
     layout="wide", 
-    page_icon="📢",
+    page_icon="📊",
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. GÖRÜNÜMÜ TEMİZLEME (CSS) ---
+# --- 2. GÖRÜNÜMÜ SADELEŞTİRME (CSS) ---
 st.markdown("""
     <style>
-        /* Gereksiz her şeyi gizle */
+        /* Menüleri, Footer'ı ve Gereksiz İkonları Gizle */
         header, .stAppHeader, [data-testid="stHeader"] {display: none !important;}
         [data-testid="stToolbar"] {display: none !important;}
         footer {display: none !important;}
-        div[class^="viewerBadge"] {display: none !important;}
         
-        /* Sayfa üst boşluğunu al */
+        /* Sayfa Düzeni */
         .block-container {
             padding-top: 1rem !important;
             padding-bottom: 0rem !important;
         }
         
-        /* Yorum Kutusu Tasarımı */
-        .yorum-kutusu {
+        /* DURUM KUTUSU TASARIMI */
+        .durum-kutu {
             padding: 20px;
-            border-radius: 10px;
+            border-radius: 12px;
+            text-align: center;
+            font-family: sans-serif;
             margin-bottom: 20px;
-            font-size: 18px;
-            font-weight: 500;
+            border: 1px solid #ddd;
         }
-        .pozitif { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .negatif { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .notr { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .baslik { font-size: 22px; font-weight: bold; display: block; margin-bottom: 8px; }
+        .aciklama { font-size: 18px; }
+        
+        /* Renk Sınıfları */
+        .pozitif { background-color: #e6fffa; color: #047481; border-color: #b2f5ea; }
+        .negatif { background-color: #fff5f5; color: #c53030; border-color: #fed7d7; }
+        .notr { background-color: #fffff0; color: #b7791f; border-color: #fefcbf; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -45,142 +49,111 @@ VARLIKLAR = {
     "Gram Altın": "GRAM_ALTIN",
     "Dolar/TL": "TRY=X",
     "Euro/TL": "EURTRY=X",
-    "BIST 100 Endeksi": "XU100.IS",
-    "Bitcoin (BTC)": "BTC-USD",
-    "Ethereum (ETH)": "ETH-USD",
-    "THY (THYAO)": "THYAO.IS",
-    "Aselsan (ASELS)": "ASELS.IS",
-    "Garanti (GARAN)": "GARAN.IS",
-    "Ereğli (EREGL)": "EREGL.IS",
-    "Şişecam (SISE)": "SISE.IS",
-    "Tüpraş (TUPRS)": "TUPRS.IS",
-    "Akbank (AKBNK)": "AKBNK.IS",
-    "Koç Holding (KCHOL)": "KCHOL.IS",
-    "Sasa (SASA)": "SASA.IS",
-    "Hektaş (HEKTS)": "HEKTS.IS",
-    "Astor Enerji": "ASTOR.IS"
+    "BIST 100": "XU100.IS",
+    "Bitcoin": "BTC-USD",
+    "Ethereum": "ETH-USD",
+    "THY": "THYAO.IS",
+    "Aselsan": "ASELS.IS",
+    "Garanti": "GARAN.IS",
+    "Şişecam": "SISE.IS",
+    "Tüpraş": "TUPRS.IS"
 }
 
-# --- 4. VERİ MOTORU ---
+# --- 4. VERİ ÇEKME ---
 @st.cache_data(ttl=300)
-def veri_getir(sembol_kodu):
+def veri_al(sembol):
     try:
-        # Trendi anlamak için son 6 aylık veriyi çekiyoruz
-        df = yf.download(sembol_kodu, period="6mo", progress=False)
-        
-        # Eğer veri gelmezse (özellikle altın için özel işlem)
-        if df.empty and "ALTIN" in sembol_kodu:
-             ons = yf.download("GC=F", period="6mo", progress=False)
-             usd = yf.download("TRY=X", period="6mo", progress=False)
-             # Sütun düzeltme
-             if isinstance(ons.columns, pd.MultiIndex): ons.columns = ons.columns.get_level_values(0)
-             if isinstance(usd.columns, pd.MultiIndex): usd.columns = usd.columns.get_level_values(0)
-             
-             df = pd.DataFrame()
-             df['Close'] = (ons['Close'] * usd['Close']) / 31.1035
-             df['High'] = df['Close'] # Basit gösterim için
-             df.index = ons.index
-        
-        # Sütun adı temizliği
-        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-        df.reset_index(inplace=True)
-        col = next((c for c in df.columns if 'date' in c.lower()), None)
-        if col: df.rename(columns={col: 'Date'}, inplace=True)
+        # Altın Hesabı
+        if sembol == "GRAM_ALTIN":
+            ons = yf.download("GC=F", period="1mo", progress=False)
+            usd = yf.download("TRY=X", period="1mo", progress=False)
             
+            if isinstance(ons.columns, pd.MultiIndex): ons.columns = ons.columns.get_level_values(0)
+            if isinstance(usd.columns, pd.MultiIndex): usd.columns = usd.columns.get_level_values(0)
+            
+            df = pd.DataFrame()
+            df['Close'] = (ons['Close'] * usd['Close']) / 31.1035
+            df.index = ons.index
+        else:
+            df = yf.download(sembol, period="1mo", progress=False)
+            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        
         return df
     except:
         return None
 
-# --- 5. İNSANİ YORUM MOTORU (TEKNİK TERİM YOK) ---
-def yorumla(df, isim):
-    son_fiyat = df['Close'].iloc[-1]
+# --- 5. GENEL KANI ANALİZİ (Kişi Yok, Sadece Durum) ---
+def durum_analizi(df):
+    if df is None or df.empty:
+        return "Veri Yok", "Veri alınamadı.", "notr"
+
+    son = df['Close'].iloc[-1]
+    bas = df['Close'].iloc[0] # 1 ay başı
+    fark = ((son - bas) / bas) * 100
     
-    # 50 Günlük Ortalama (Piyasanın yönünü belirleyen ana hat)
-    if len(df) > 50:
-        ortalama = df['Close'].tail(50).mean()
+    # 5 Günlük kısa trend
+    son_5_gun = df['Close'].tail(5).mean()
+    trend_kisa = "Yüksek" if son > son_5_gun else "Düşük"
+
+    # SENARYOLAR (Tamamen Nesnel)
+    if fark > 5:
+        baslik = "GÜÇLÜ YÜKSELİŞ TRENDİ"
+        metin = "Fiyatlar belirgin şekilde yukarı yönlü. Alıcılar piyasada baskın durumda. Değer kazancı yüksek."
+        renk = "pozitif"
+    elif fark > 1:
+        baslik = "POZİTİF SEYİR"
+        metin = "Piyasa sakin ama yönü yukarı. Aşırı bir hareketlilik yok, istikrarlı bir yükseliş gözleniyor."
+        renk = "pozitif"
+    elif fark > -1 and fark < 1:
+        baslik = "YATAY / DURGUN"
+        metin = "Fiyatlar belirgin bir değişim göstermiyor. Piyasa yön arayışında, kararsız bir seyir hakim."
+        renk = "notr"
+    elif fark < -5:
+        baslik = "GÜÇLÜ SATIŞ BASKISI"
+        metin = "Piyasada sert düşüş hakim. Satıcılar çok daha aktif, fiyatlarda ciddi geri çekilme var."
+        renk = "negatif"
     else:
-        ortalama = son_fiyat # Veri azsa son fiyata eşitle
-
-    # Haftalık Değişim (Kısa vade hissi)
-    hafta_once = df['Close'].iloc[-5] if len(df) > 5 else df['Close'].iloc[0]
-    degisim = ((son_fiyat - hafta_once) / hafta_once) * 100
-
-    # YORUM MANTIĞI (Burada teknik terimleri halk diline çeviriyoruz)
-    durum = ""
-    stil = ""
-    icon = ""
-
-    if son_fiyat > ortalama * 1.02: # Ortalamanın %2 üzerindeyse
-        if degisim > 3:
-            durum = f"🔥 **GENEL KANI: İŞTAHLI VE COŞKULU**\n\nAnalistlere göre {isim} şu an yatırımcıların gözdesi durumunda. Talep çok güçlü ve fiyatlar yukarı gitme eğiliminde. Ancak çok hızlı yükseldiği için kısa vadeli ufak geri çekilmeler (kar satışı) normal karşılanmalı."
-            stil = "pozitif"
-            icon = "🚀"
-        elif degisim > 0:
-            durum = f"✅ **GENEL KANI: OLUMLU / GÜVENLİ LİMAN**\n\n{isim} tarafında işler yolunda görünüyor. Piyasa sakin ama yön yukarı. Yatırımcılar panik yapmadan ellerinde tutmaya devam ediyor. Genel hava pozitif."
-            stil = "pozitif"
-            icon = "📈"
-        else:
-            durum = f"🤔 **GENEL KANI: DİNLENME MODUNDA**\n\nGenel trend hala yukarı olsa da, {isim} son birkaç gündür biraz yorulmuş görünüyor. Piyasa şu an 'bekle-gör' moduna geçmiş durumda."
-            stil = "notr"
-            icon = "⏸️"
-            
-    elif son_fiyat < ortalama * 0.98: # Ortalamanın %2 altındaysa
-        if degisim < -3:
-            durum = f"⚠️ **GENEL KANI: SATIŞ BASKISI VAR**\n\nŞu an {isim} üzerinde kara bulutlar dolaşıyor. Yatırımcılar tedirgin ve satışlar ağır basıyor. Analistler 'düşen bıçak tutulmaz' diyerek temkinli olunmasını öneriyor."
-            stil = "negatif"
-            icon = "🔻"
-        else:
-            durum = f"❄️ **GENEL KANI: SOĞUK VE ZAYIF**\n\n{isim} şu an yatırımcısına heyecan vermiyor. Piyasa ilgisi düşük. Fiyatlar baskı altında ve toparlanmakta zorlanıyor."
-            stil = "negatif"
-            icon = "📉"
-    else:
-        durum = f"⚖️ **GENEL KANI: KARARSIZ / YATAY**\n\n{isim} şu an yönünü arıyor. Ne alıcılar ne satıcılar baskın gelebiliyor. Piyasa bir haber veya gelişme bekliyor gibi. Şu an için belirsizlik hakim."
-        stil = "notr"
-        icon = "😐"
-
-    return durum, stil, icon, son_fiyat, degisim
+        baslik = "NEGATİF SEYİR"
+        metin = "Piyasa hafif satıcılı. Fiyatlar gevşeme eğiliminde, talep zayıf görünüyor."
+        renk = "negatif"
+        
+    return baslik, metin, renk, son, fark
 
 # --- 6. ARAYÜZ ---
-col_secim, col_bos = st.columns([3, 1])
-with col_secim:
-    secilen_isim = st.selectbox("Analiz Edilecek Varlık:", list(VARLIKLAR.keys()))
+st.markdown("<h3 style='text-align: center;'>Piyasa Genel Görünümü</h3>", unsafe_allow_html=True)
 
-if secilen_isim:
-    kodu = VARLIKLAR[secilen_isim]
+secim = st.selectbox("İncelemek İstediğiniz Varlık:", list(VARLIKLAR.keys()))
+
+if secim:
+    df = veri_al(VARLIKLAR[secim])
     
-    # Özel Altın/Gümüş Kod Ayarı
-    if "Altın" in secilen_isim: kod_analiz = "GRAM_ALTIN" # Fonksiyon içinde hallediliyor
-    else: kod_analiz = kodu
-
-    with st.spinner("Piyasa nabzı ölçülüyor..."):
-        df = veri_getir(kodu)
-
     if df is not None and not df.empty:
-        yorum_metni, stil_sinifi, icon, son, yuzde = yorumla(df, secilen_isim)
-
-        # 1. YORUM ALANI (EN ÜSTTE VE BELİRGİN)
+        baslik, aciklama, renk, fiyat, yuzde = durum_analizi(df)
+        
+        # 1. DURUM KUTUSU (Tek Yorum, Kişisiz)
         st.markdown(f"""
-            <div class="yorum-kutusu {stil_sinifi}">
-                {yorum_metni}
+            <div class="durum-kutu {renk}">
+                <span class="baslik">{baslik}</span>
+                <span class="aciklama">{aciklama}</span>
             </div>
         """, unsafe_allow_html=True)
-
-        # 2. BASİT RAKAMLAR
-        col1, col2 = st.columns(2)
-        col1.metric("Anlık Fiyat", f"{son:,.2f} TL")
-        col2.metric("Haftalık Performans", f"%{yuzde:.2f}", delta_color="normal")
-
-        # 3. GRAFİK (SADE)
+        
+        # 2. RAKAMLAR
+        c1, c2 = st.columns(2)
+        c1.metric("Fiyat", f"{fiyat:,.2f} TL")
+        c2.metric("Aylık Değişim", f"%{yuzde:.2f}", delta_color="normal")
+        
+        # 3. GRAFİK
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=df['Date'], y=df['Close'],
+            x=df.index, y=df['Close'],
             mode='lines',
             line=dict(color='#333', width=2),
             fill='tozeroy',
             fillcolor='rgba(0,0,0,0.05)'
         ))
         fig.update_layout(
-            margin=dict(l=0, r=0, t=10, b=0),
+            margin=dict(l=0, r=0, t=20, b=0),
             height=300,
             xaxis=dict(showgrid=False),
             yaxis=dict(showgrid=True, gridcolor='#eee'),
@@ -188,6 +161,5 @@ if secilen_isim:
             dragmode=False
         )
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-        
     else:
-        st.error("Veri alınamadı. Bağlantı hatası.")
+        st.error("Veri alınamadı.")
