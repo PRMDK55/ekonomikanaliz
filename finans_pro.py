@@ -2,164 +2,192 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
+from datetime import datetime
 
-# --- 1. AYARLAR ---
-st.set_page_config(
-    page_title="Piyasa Durumu", 
-    layout="wide", 
-    page_icon="📊",
-    initial_sidebar_state="collapsed"
-)
+# --- 1. MOBİL UYUMLU AYARLAR ---
+st.set_page_config(page_title="Borsa Analiz", layout="wide", page_icon="📱")
 
-# --- 2. GÖRÜNÜMÜ SADELEŞTİRME (CSS) ---
+# CSS: İkonları gizleme ve Mobil ayarları
 st.markdown("""
-    <style>
-        /* Menüleri, Footer'ı ve Gereksiz İkonları Gizle */
-        header, .stAppHeader, [data-testid="stHeader"] {display: none !important;}
-        [data-testid="stToolbar"] {display: none !important;}
-        footer {display: none !important;}
-        
-        /* Sayfa Düzeni */
-        .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 0rem !important;
-        }
-        
-        /* DURUM KUTUSU TASARIMI */
-        .durum-kutu {
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            font-family: sans-serif;
-            margin-bottom: 20px;
-            border: 1px solid #ddd;
-        }
-        .baslik { font-size: 22px; font-weight: bold; display: block; margin-bottom: 8px; }
-        .aciklama { font-size: 18px; }
-        
-        /* Renk Sınıfları */
-        .pozitif { background-color: #e6fffa; color: #047481; border-color: #b2f5ea; }
-        .negatif { background-color: #fff5f5; color: #c53030; border-color: #fed7d7; }
-        .notr { background-color: #fffff0; color: #b7791f; border-color: #fefcbf; }
-    </style>
+<style>
+    /* İstenmeyen İkonları ve Menüleri Gizle */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stAppDeployButton {display:none;}
+
+    /* Genel Arka Plan */
+    .stApp {background-color: #f4f7f6;}
+    
+    /* Mobil İçin Kart Tasarımı */
+    .stat-card {
+        background-color: white; 
+        padding: 15px; 
+        border-radius: 12px; 
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
+        margin-bottom: 10px;
+        border-left: 5px solid #3498db;
+    }
+    
+    /* Mobilde Yazı Boyutlarını Düzelt */
+    div[data-testid="stMetricValue"] {
+        font-size: 24px !important;
+    }
+    
+    /* Butonları Mobilde Parmakla Basılacak Hale Getir */
+    .stButton > button {
+        width: 100%;
+        border-radius: 12px;
+        height: 50px;
+        font-weight: bold;
+    }
+    
+    /* Üst Boşluğu Al (Telefonda yer kazanmak için) */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 5rem;
+    }
+</style>
 """, unsafe_allow_html=True)
 
-# --- 3. VARLIK LİSTESİ ---
-VARLIKLAR = {
-    "Gram Altın": "GRAM_ALTIN",
-    "Dolar/TL": "TRY=X",
-    "Euro/TL": "EURTRY=X",
-    "BIST 100": "XU100.IS",
-    "Bitcoin": "BTC-USD",
-    "Ethereum": "ETH-USD",
-    "THY": "THYAO.IS",
-    "Aselsan": "ASELS.IS",
-    "Garanti": "GARAN.IS",
-    "Şişecam": "SISE.IS",
-    "Tüpraş": "TUPRS.IS"
+# --- 2. VARLIK HAVUZU ---
+varlik_havuzu = {
+    "🇹🇷 BIST (Popüler)": [
+        "THYAO", "ASELS", "GARAN", "EREGL", "SISE", "BIMAS", "AKBNK", "KCHOL", "SAHOL",
+        "TUPRS", "FROTO", "SASA", "HEKTS", "PETKM", "TCELL", "YKBNK", "ISCTR",
+        "ARCLK", "VESTL", "TOASO", "PGSUS", "KONYA", "EGEEN", "MIATK", "ASTOR", 
+        "EUPWR", "KONTR", "SMRTG", "GUBRF", "KOZAL", "ODAS", "ZOREN"
+    ],
+    "🥇 Altın & Döviz": [
+        "Gram Altın", "Çeyrek Altın", "Yarım Altın", "Ons Altın", "Gümüş (Gram)",
+        "Dolar/TL", "Euro/TL", "Sterlin/TL"
+    ],
+    "₿ Kripto & ABD": [
+        "BTC (Bitcoin)", "ETH (Ethereum)", "SOL (Solana)", "AVAX", "DOGE",
+        "AAPL (Apple)", "TSLA (Tesla)", "NVDA (NVIDIA)", "AMZN"
+    ]
 }
 
-# --- 4. VERİ ÇEKME ---
+# --- 3. AKILLI SEMBOL MOTORU ---
+def sembol_cozucu(secim, kat):
+    # Manuel arama kısmı kaldırıldı, sadece listeden seçimi işliyoruz
+    isim = secim
+    ozel_map = {
+        "Gram Altın": "GRAM_ALTIN", "Çeyrek Altın": "CEYREK_ALTIN",
+        "Yarım Altın": "YARIM_ALTIN", "Ons Altın": "GC=F", "Gümüş (Gram)": "GUMUS_TL",
+        "Dolar/TL": "TRY=X", "Euro/TL": "EURTRY=X", "Sterlin/TL": "GBPTRY=X"
+    }
+    
+    for k, v in ozel_map.items():
+        if k in isim: return v, k
+        
+    # BIST Hissesi mi?
+    if len(isim) <= 5 and " " not in isim: # Kısaltma ise (THYAO gibi)
+         return f"{isim}.IS", isim
+
+    # Listeden gelen isim
+    if "BIST" in kat: return f"{isim}.IS", isim
+    if "Kripto" in kat:
+        kod = isim.split("(")[0].strip()
+        return f"{kod}-USD", kod
+    
+    return "THYAO.IS", "THYAO"
+
+# --- 4. VERİ ÇEKME (HIZLI & GÜVENLİ) ---
 @st.cache_data(ttl=300)
-def veri_al(sembol):
+def veri_getir(sembol, vade_gun):
     try:
-        # Altın Hesabı
-        if sembol == "GRAM_ALTIN":
-            ons = yf.download("GC=F", period="1mo", progress=False)
-            usd = yf.download("TRY=X", period="1mo", progress=False)
+        ozel_hesaplar = ["GRAM_ALTIN", "CEYREK_ALTIN", "YARIM_ALTIN", "GUMUS_TL"]
+        periyot = "2y"
+        
+        if sembol in ozel_hesaplar:
+            ana_kod = "GC=F" if "ALTIN" in sembol else "SI=F"
+            ons = yf.download(ana_kod, period=periyot, progress=False)
+            usd = yf.download("TRY=X", period=periyot, progress=False)
             
             if isinstance(ons.columns, pd.MultiIndex): ons.columns = ons.columns.get_level_values(0)
             if isinstance(usd.columns, pd.MultiIndex): usd.columns = usd.columns.get_level_values(0)
             
-            df = pd.DataFrame()
-            df['Close'] = (ons['Close'] * usd['Close']) / 31.1035
-            df.index = ons.index
+            df = pd.merge(ons['Close'], usd['Close'], left_index=True, right_index=True, suffixes=('_Ons', '_Usd'))
+            gram_tl = (df['Close_Ons'] * df['Close_Usd']) / 31.1035
+            
+            if sembol == "GRAM_ALTIN": df['Close'] = gram_tl
+            elif sembol == "CEYREK_ALTIN": df['Close'] = gram_tl * 1.63
+            elif sembol == "YARIM_ALTIN": df['Close'] = gram_tl * 3.26
+            elif sembol == "GUMUS_TL": df['Close'] = gram_tl
+            
+            df['Open'] = df['High'] = df['Low'] = df['Close']
+            df.reset_index(inplace=True)
         else:
-            df = yf.download(sembol, period="1mo", progress=False)
+            df = yf.download(sembol, period=periyot, progress=False)
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+            df.reset_index(inplace=True)
         
+        if 'Date' not in df.columns:
+            if 'Datetime' in df.columns: df.rename(columns={'Datetime': 'Date'}, inplace=True)
+            else: df.rename(columns={df.columns[0]: 'Date'}, inplace=True)
+            
         return df
-    except:
-        return None
+    except: return None
 
-# --- 5. GENEL KANI ANALİZİ (Kişi Yok, Sadece Durum) ---
-def durum_analizi(df):
-    if df is None or df.empty:
-        return "Veri Yok", "Veri alınamadı.", "notr"
-
-    son = df['Close'].iloc[-1]
-    bas = df['Close'].iloc[0] # 1 ay başı
-    fark = ((son - bas) / bas) * 100
+# --- 5. ARAYÜZ (MOBİL UYUMLU YAN MENÜ) ---
+with st.sidebar:
+    st.title("📱 Cep Analiz")
+    kat = st.selectbox("Pazar:", list(varlik_havuzu.keys()))
+    secim = st.selectbox("Varlık:", varlik_havuzu[kat])
     
-    # 5 Günlük kısa trend
-    son_5_gun = df['Close'].tail(5).mean()
-    trend_kisa = "Yüksek" if son > son_5_gun else "Düşük"
-
-    # SENARYOLAR (Tamamen Nesnel)
-    if fark > 5:
-        baslik = "GÜÇLÜ YÜKSELİŞ TRENDİ"
-        metin = "Fiyatlar belirgin şekilde yukarı yönlü. Alıcılar piyasada baskın durumda. Değer kazancı yüksek."
-        renk = "pozitif"
-    elif fark > 1:
-        baslik = "POZİTİF SEYİR"
-        metin = "Piyasa sakin ama yönü yukarı. Aşırı bir hareketlilik yok, istikrarlı bir yükseliş gözleniyor."
-        renk = "pozitif"
-    elif fark > -1 and fark < 1:
-        baslik = "YATAY / DURGUN"
-        metin = "Fiyatlar belirgin bir değişim göstermiyor. Piyasa yön arayışında, kararsız bir seyir hakim."
-        renk = "notr"
-    elif fark < -5:
-        baslik = "GÜÇLÜ SATIŞ BASKISI"
-        metin = "Piyasada sert düşüş hakim. Satıcılar çok daha aktif, fiyatlarda ciddi geri çekilme var."
-        renk = "negatif"
-    else:
-        baslik = "NEGATİF SEYİR"
-        metin = "Piyasa hafif satıcılı. Fiyatlar gevşeme eğiliminde, talep zayıf görünüyor."
-        renk = "negatif"
-        
-    return baslik, metin, renk, son, fark
-
-# --- 6. ARAYÜZ ---
-st.markdown("<h3 style='text-align: center;'>Piyasa Genel Görünümü</h3>", unsafe_allow_html=True)
-
-secim = st.selectbox("İncelemek İstediğiniz Varlık:", list(VARLIKLAR.keys()))
-
-if secim:
-    df = veri_al(VARLIKLAR[secim])
+    # Manuel arama (text_input) kaldırıldı
     
-    if df is not None and not df.empty:
-        baslik, aciklama, renk, fiyat, yuzde = durum_analizi(df)
-        
-        # 1. DURUM KUTUSU (Tek Yorum, Kişisiz)
-        st.markdown(f"""
-            <div class="durum-kutu {renk}">
-                <span class="baslik">{baslik}</span>
-                <span class="aciklama">{aciklama}</span>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # 2. RAKAMLAR
-        c1, c2 = st.columns(2)
-        c1.metric("Fiyat", f"{fiyat:,.2f} TL")
-        c2.metric("Aylık Değişim", f"%{yuzde:.2f}", delta_color="normal")
-        
-        # 3. GRAFİK
+    st.write("---")
+    vade = st.select_slider("Süre:", ["1 Hafta", "1 Ay", "6 Ay", "1 Yıl"], value="6 Ay")
+    gun_map = {"1 Hafta": 7, "1 Ay": 30, "6 Ay": 180, "1 Yıl": 365}
+    
+    if st.button("🔄 Yenile"): st.rerun()
+
+# --- 6. ANA EKRAN ---
+# Manuel parametresi kaldırıldı
+kod, isim = sembol_cozucu(secim, kat)
+
+# Başlık mobilde çok yer kaplamasın diye simple yapıyoruz
+st.subheader(f"📊 {isim}")
+
+df_full = veri_getir(kod, gun_map[vade])
+
+if df_full is not None and not df_full.empty:
+    df_view = df_full.tail(gun_map[vade])
+    son = float(df_view['Close'].iloc[-1])
+    onceki = float(df_view['Close'].iloc[0])
+    degisim = ((son - onceki) / onceki) * 100
+    
+    # Mobilde 4 kolon sığmaz, 2'şerli yapıyoruz
+    c1, c2 = st.columns(2)
+    c1.metric("Fiyat", f"{son:.2f}", f"%{degisim:.2f}")
+    c2.metric("En Yüksek", f"{df_view['High'].max():.2f}")
+    
+    # Grafik
+    tab1, tab2 = st.tabs(["Grafik", "Yorum"])
+    
+    with tab1:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df.index, y=df['Close'],
-            mode='lines',
-            line=dict(color='#333', width=2),
-            fill='tozeroy',
-            fillcolor='rgba(0,0,0,0.05)'
-        ))
+        fig.add_trace(go.Scatter(x=df_view['Date'], y=df_view['Close'], line=dict(color='#2980b9', width=3)))
+        # Mobilde grafiğin altındaki tarihleri sadeleştir
         fig.update_layout(
-            margin=dict(l=0, r=0, t=20, b=0),
-            height=300,
+            template="plotly_white", 
+            height=350, # Mobilde çok uzun olmasın
+            margin=dict(l=10, r=10, t=10, b=10),
             xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor='#eee'),
-            template="plotly_white",
-            dragmode=False
+            yaxis=dict(showgrid=True, gridcolor='#eee')
         )
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-    else:
-        st.error("Veri alınamadı.")
+        st.plotly_chart(fig, use_container_width=True)
+        
+    with tab2:
+        st.markdown("### 🤖 Yapay Zeka Özeti")
+        if degisim > 0:
+            st.success(f"**YÜKSELİŞ:** {vade} periyodunda %{degisim:.1f} kazandırdı. Trend pozitif.")
+        else:
+            st.error(f"**DÜŞÜŞ:** {vade} periyodunda %{abs(degisim):.1f} kaybettirdi. Satış baskısı var.")
+            
+        st.info(f"💡 **Analist Notu:** Fiyat son kapanışta {son:.2f} seviyesinde. (Veri Zamanı: {datetime.now().strftime('%H:%M')})")
+
+else:
+    st.warning("Veri yükleniyor veya bağlantı hatası...")
